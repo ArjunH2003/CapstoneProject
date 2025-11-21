@@ -62,8 +62,8 @@ public class VehicleDAO {
         try {
             String generatedID = generateVehicleID(vehicleBean.getName());
 
-            String sql = "INSERT INTO ATA_TBL_VEHICLE (VEHICLEID, NAME, TYPE, REGISTRATIONNUMBER, SEATINGCAPACITY, FAREPERKM) " +
-                         "VALUES (?, ?, ?, ?, ?, ?)";
+         // [FIX] Added ROUTEID and the 7th '?'
+            String sql = "INSERT INTO ATA_TBL_VEHICLE (VEHICLEID, NAME, TYPE, REGISTRATIONNUMBER, SEATINGCAPACITY, FAREPERKM, ROUTEID) VALUES (?, ?, ?, ?, ?, ?, ?)";
             
             ps = con.prepareStatement(sql);
             ps.setString(1, generatedID);
@@ -72,7 +72,7 @@ public class VehicleDAO {
             ps.setString(4, vehicleBean.getRegistrationNumber());
             ps.setInt(5, vehicleBean.getSeatingCapacity());
             ps.setDouble(6, vehicleBean.getFarePerKM());
-
+            ps.setString(7, vehicleBean.getRouteID());
             int rows = ps.executeUpdate();
             if (rows > 0) {
                 result = generatedID;
@@ -92,10 +92,11 @@ public class VehicleDAO {
      */
     public int deleteVehicle(ArrayList<String> vehicleIDs) {
         int count = 0;
-        Connection con = DBUtil.getDBConnection("mysql");
+        Connection con = null;
         PreparedStatement ps = null;
 
         try {
+            con = DBUtil.getDBConnection("mysql");
             String sql = "DELETE FROM ATA_TBL_VEHICLE WHERE VEHICLEID=?";
             ps = con.prepareStatement(sql);
 
@@ -103,6 +104,9 @@ public class VehicleDAO {
                 ps.setString(1, id);
                 count += ps.executeUpdate();
             }
+        } catch (java.sql.SQLIntegrityConstraintViolationException e) {
+            // [FIX] Return -1 to indicate "Cannot delete because used elsewhere"
+            return -1; 
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {
@@ -117,20 +121,46 @@ public class VehicleDAO {
      */
     public boolean modifyVehicle(VehicleBean vehicleBean) {
         boolean success = false;
-        Connection con = DBUtil.getDBConnection("mysql");
+        Connection con = null;
         PreparedStatement ps = null;
 
         try {
-            String sql = "UPDATE ATA_TBL_VEHICLE SET NAME=?, TYPE=?, REGISTRATIONNUMBER=?, SEATINGCAPACITY=?, FAREPERKM=? " +
-                         "WHERE VEHICLEID=?";
+            con = DBUtil.getDBConnection("mysql");
+            
+            // SQL Query: 6 columns to update + 1 for WHERE clause = 7 Parameters
+            String sql = "UPDATE ATA_TBL_VEHICLE SET NAME=?, TYPE=?, REGISTRATIONNUMBER=?, SEATINGCAPACITY=?, FAREPERKM=?, ROUTEID=? WHERE VEHICLEID=?";
             
             ps = con.prepareStatement(sql);
+            
+            // 1. NAME (VARCHAR 20)
             ps.setString(1, vehicleBean.getName());
-            ps.setString(2, vehicleBean.getType());
+            
+            // 2. TYPE (VARCHAR 8) - Ensure value is either 'AC' or 'NON AC'
+            // Truncate if necessary to prevent error, though UI dropdown prevents this usually
+            String type = vehicleBean.getType();
+            if (type.length() > 8) type = type.substring(0, 8);
+            ps.setString(2, type);
+            
+            // 3. REGISTRATIONNUMBER (VARCHAR 20)
             ps.setString(3, vehicleBean.getRegistrationNumber());
+            
+            // 4. SEATINGCAPACITY (INT 3)
             ps.setInt(4, vehicleBean.getSeatingCapacity());
+            
+            // 5. FAREPERKM (DECIMAL)
             ps.setDouble(5, vehicleBean.getFarePerKM());
-            ps.setString(6, vehicleBean.getVehicleID());
+            
+            // 6. ROUTEID (VARCHAR 8)
+            // Handle "None" from UI logic
+            String rID = vehicleBean.getRouteID();
+            if (rID == null || rID.equals("None") || rID.isEmpty()) {
+                ps.setString(6, null); // Set to NULL in DB
+            } else {
+                ps.setString(6, rID);
+            }
+            
+            // 7. VEHICLEID (VARCHAR 6) - This is the WHERE clause
+            ps.setString(7, vehicleBean.getVehicleID());
 
             int rows = ps.executeUpdate();
             if (rows > 0) {
@@ -143,7 +173,6 @@ public class VehicleDAO {
         }
         return success;
     }
-
     /**
      * Retrieves all vehicles.
      * Reference: DD DAO Method Summary - ArrayList<BeanObject> findAll()
@@ -167,7 +196,7 @@ public class VehicleDAO {
                 vehicle.setRegistrationNumber(rs.getString("REGISTRATIONNUMBER"));
                 vehicle.setSeatingCapacity(rs.getInt("SEATINGCAPACITY"));
                 vehicle.setFarePerKM(rs.getDouble("FAREPERKM"));
-                
+                vehicle.setRouteID(rs.getString("ROUTEID"));
                 vehicleList.add(vehicle);
             }
         } catch (SQLException e) {
@@ -202,6 +231,7 @@ public class VehicleDAO {
                 vehicle.setRegistrationNumber(rs.getString("REGISTRATIONNUMBER"));
                 vehicle.setSeatingCapacity(rs.getInt("SEATINGCAPACITY"));
                 vehicle.setFarePerKM(rs.getDouble("FAREPERKM"));
+                vehicle.setRouteID(rs.getString("ROUTEID"));
             }
         } catch (SQLException e) {
             e.printStackTrace();

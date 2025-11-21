@@ -11,203 +11,114 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 
+
 public class RouteDAO {
 
-    /**
-     * Generates a unique RouteID.
-     * Logic: First 2 letters of Source + First 2 letters of Destination + 4 digit number.
-     * Example: Source="Delhi", Destination="Agra" -> Prefix="DEAG" -> ID="DEAG1000"
-     * Reference: DD Appendix 
-     */
+    // ID Generation Logic
     private String generateRouteID(String source, String destination) {
-        // Ensure source/dest have at least 2 chars (Fallback to "XX" if not)
         String srcPrefix = (source != null && source.length() >= 2) ? source.substring(0, 2) : "XX";
         String destPrefix = (destination != null && destination.length() >= 2) ? destination.substring(0, 2) : "XX";
-        
         String prefix = (srcPrefix + destPrefix).toUpperCase();
-        String newID = prefix + "1000"; // Default start ID
+        String newID = prefix + "1000"; 
 
         Connection con = DBUtil.getDBConnection("mysql");
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
         try {
-            // Find the highest ID currently existing with this specific Source-Dest prefix
-            String sql = "SELECT ROUTEID FROM ATA_TBL_ROUTE WHERE ROUTEID LIKE ? ORDER BY ROUTEID DESC LIMIT 1";
-            ps = con.prepareStatement(sql);
+            PreparedStatement ps = con.prepareStatement("SELECT ROUTEID FROM ATA_TBL_ROUTE WHERE ROUTEID LIKE ? ORDER BY ROUTEID DESC LIMIT 1");
             ps.setString(1, prefix + "%");
-            rs = ps.executeQuery();
-
+            ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 String lastID = rs.getString("ROUTEID");
-                // Extract the numeric part (index 4 onwards because prefix is 4 chars)
                 int num = Integer.parseInt(lastID.substring(4));
-                num++;
-                newID = prefix + num;
+                newID = prefix + (num + 1);
             }
-        } catch (SQLException | NumberFormatException e) {
-            e.printStackTrace();
-        } finally {
-            try { if (con != null) con.close(); } catch (SQLException e) { e.printStackTrace(); }
-        }
+            con.close();
+        } catch (Exception e) { e.printStackTrace(); }
         return newID;
     }
 
-    /**
-     * Creates a new Route.
-     * Reference: DD DAO Method Summary - String createXYZ(BeanObject) [cite: 501]
-     */
     public String createRoute(RouteBean routeBean) {
-        String result = "FAIL";
-        Connection con = DBUtil.getDBConnection("mysql");
-        PreparedStatement ps = null;
-
-        try {
-            String generatedID = generateRouteID(routeBean.getSource(), routeBean.getDestination());
-
-            String sql = "INSERT INTO ATA_TBL_ROUTE (ROUTEID, SOURCE, DESTINATION, DISTANCE, TRAVELDURATION) " +
-                         "VALUES (?, ?, ?, ?, ?)";
-            
-            ps = con.prepareStatement(sql);
-            ps.setString(1, generatedID);
+        String id = generateRouteID(routeBean.getSource(), routeBean.getDestination());
+        try (Connection con = DBUtil.getDBConnection("mysql")) {
+            String sql = "INSERT INTO ATA_TBL_ROUTE (ROUTEID, SOURCE, DESTINATION, DISTANCE, TRAVELDURATION) VALUES (?, ?, ?, ?, ?)";
+            PreparedStatement ps = con.prepareStatement(sql);
+            ps.setString(1, id);
             ps.setString(2, routeBean.getSource());
             ps.setString(3, routeBean.getDestination());
             ps.setInt(4, routeBean.getDistance());
             ps.setInt(5, routeBean.getTravelDuration());
-
-            int rows = ps.executeUpdate();
-            if (rows > 0) {
-                result = generatedID;
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-            result = "FAIL";
-        } finally {
-            try { if (con != null) con.close(); } catch (SQLException e) { e.printStackTrace(); }
-        }
-        return result;
+            return ps.executeUpdate() > 0 ? id : "FAIL";
+        } catch (Exception e) { return "FAIL"; }
     }
 
-    /**
-     * Deletes routes based on a list of Route IDs.
-     * Reference: DD DAO Method Summary - int deleteXYZ(ArrayList<String>) [cite: 501]
-     */
+    // [FIXED] Now catches Integrity Constraint Violation
     public int deleteRoute(ArrayList<String> routeIDs) {
         int count = 0;
-        Connection con = DBUtil.getDBConnection("mysql");
-        PreparedStatement ps = null;
-
+        Connection con = null;
         try {
+            con = DBUtil.getDBConnection("mysql");
             String sql = "DELETE FROM ATA_TBL_ROUTE WHERE ROUTEID=?";
-            ps = con.prepareStatement(sql);
+            PreparedStatement ps = con.prepareStatement(sql);
 
             for (String id : routeIDs) {
                 ps.setString(1, id);
                 count += ps.executeUpdate();
             }
+        } catch (java.sql.SQLIntegrityConstraintViolationException e) {
+            // [CRITICAL] This specific return value triggers the popup in AdminPanel
+            return -1; 
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {
-            try { if (con != null) con.close(); } catch (SQLException e) { e.printStackTrace(); }
+            try { if (con != null) con.close(); } catch (Exception e) {}
         }
         return count;
     }
 
-    /**
-     * Modifies an existing route's details.
-     * Reference: DD DAO Method Summary - boolean updateXYZ(BeanObject) [cite: 501]
-     * Matches Service Interface: boolean modifyRoute(RouteBean) [cite: 497]
-     */
     public boolean modifyRoute(RouteBean routeBean) {
-        boolean success = false;
-        Connection con = DBUtil.getDBConnection("mysql");
-        PreparedStatement ps = null;
-
-        try {
-            String sql = "UPDATE ATA_TBL_ROUTE SET SOURCE=?, DESTINATION=?, DISTANCE=?, TRAVELDURATION=? " +
-                         "WHERE ROUTEID=?";
-            
-            ps = con.prepareStatement(sql);
+        try (Connection con = DBUtil.getDBConnection("mysql")) {
+            String sql = "UPDATE ATA_TBL_ROUTE SET SOURCE=?, DESTINATION=?, DISTANCE=?, TRAVELDURATION=? WHERE ROUTEID=?";
+            PreparedStatement ps = con.prepareStatement(sql);
             ps.setString(1, routeBean.getSource());
             ps.setString(2, routeBean.getDestination());
             ps.setInt(3, routeBean.getDistance());
             ps.setInt(4, routeBean.getTravelDuration());
             ps.setString(5, routeBean.getRouteID());
-
-            int rows = ps.executeUpdate();
-            if (rows > 0) {
-                success = true;
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-            try { if (con != null) con.close(); } catch (SQLException e) { e.printStackTrace(); }
-        }
-        return success;
+            return ps.executeUpdate() > 0;
+        } catch (Exception e) { return false; }
     }
 
-    /**
-     * Retrieves all routes.
-     * Reference: DD DAO Method Summary - ArrayList<BeanObject> findAll() [cite: 501]
-     */
     public ArrayList<RouteBean> findAll() {
-        ArrayList<RouteBean> routeList = new ArrayList<>();
-        Connection con = DBUtil.getDBConnection("mysql");
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            String sql = "SELECT * FROM ATA_TBL_ROUTE";
-            ps = con.prepareStatement(sql);
-            rs = ps.executeQuery();
-
+        ArrayList<RouteBean> list = new ArrayList<>();
+        try (Connection con = DBUtil.getDBConnection("mysql")) {
+            ResultSet rs = con.createStatement().executeQuery("SELECT * FROM ATA_TBL_ROUTE");
             while (rs.next()) {
-                RouteBean route = new RouteBean();
-                route.setRouteID(rs.getString("ROUTEID"));
-                route.setSource(rs.getString("SOURCE"));
-                route.setDestination(rs.getString("DESTINATION"));
-                route.setDistance(rs.getInt("DISTANCE"));
-                route.setTravelDuration(rs.getInt("TRAVELDURATION"));
-                
-                routeList.add(route);
+                RouteBean rb = new RouteBean();
+                rb.setRouteID(rs.getString("ROUTEID"));
+                rb.setSource(rs.getString("SOURCE"));
+                rb.setDestination(rs.getString("DESTINATION"));
+                rb.setDistance(rs.getInt("DISTANCE"));
+                rb.setTravelDuration(rs.getInt("TRAVELDURATION"));
+                list.add(rb);
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-            try { if (con != null) con.close(); } catch (SQLException e) { e.printStackTrace(); }
-        }
-        return routeList;
+        } catch (Exception e) {}
+        return list;
     }
-
-    /**
-     * Finds a specific route by ID.
-     * Reference: DD DAO Method Summary - BeanObject findByID(String) [cite: 501]
-     */
-    public RouteBean findByID(String routeID) {
-        RouteBean route = null;
-        Connection con = DBUtil.getDBConnection("mysql");
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            String sql = "SELECT * FROM ATA_TBL_ROUTE WHERE ROUTEID=?";
-            ps = con.prepareStatement(sql);
-            ps.setString(1, routeID);
-            rs = ps.executeQuery();
-
+    
+    public RouteBean findByID(String id) {
+        try (Connection con = DBUtil.getDBConnection("mysql")) {
+            PreparedStatement ps = con.prepareStatement("SELECT * FROM ATA_TBL_ROUTE WHERE ROUTEID=?");
+            ps.setString(1, id);
+            ResultSet rs = ps.executeQuery();
             if (rs.next()) {
-                route = new RouteBean();
-                route.setRouteID(rs.getString("ROUTEID"));
-                route.setSource(rs.getString("SOURCE"));
-                route.setDestination(rs.getString("DESTINATION"));
-                route.setDistance(rs.getInt("DISTANCE"));
-                route.setTravelDuration(rs.getInt("TRAVELDURATION"));
+                RouteBean rb = new RouteBean();
+                rb.setRouteID(rs.getString("ROUTEID"));
+                rb.setSource(rs.getString("SOURCE"));
+                rb.setDestination(rs.getString("DESTINATION"));
+                rb.setDistance(rs.getInt("DISTANCE"));
+                rb.setTravelDuration(rs.getInt("TRAVELDURATION"));
+                return rb;
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-            try { if (con != null) con.close(); } catch (SQLException e) { e.printStackTrace(); }
-        }
-        return route;
+        } catch (Exception e) {}
+        return null;
     }
 }

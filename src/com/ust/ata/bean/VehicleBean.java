@@ -4,6 +4,8 @@ public class VehicleBean {
     private String vehicleID, name, type, registrationNumber;
     private int seatingCapacity;
     private double farePerKM;
+    private String routeID;
+    
     
     public VehicleBean() {}
     public VehicleBean(String n, String t, String r, int s, double f) {
@@ -15,4 +17,8 @@ public class VehicleBean {
     public String getRegistrationNumber() { return registrationNumber; } public void setRegistrationNumber(String r) { registrationNumber = r; }
     public int getSeatingCapacity() { return seatingCapacity; } public void setSeatingCapacity(int s) { seatingCapacity = s; }
     public double getFarePerKM() { return farePerKM; } public void setFarePerKM(double f) { farePerKM = f; }
+    public String getRouteID() { return routeID; }
+    public void setRouteID(String routeID) { this.routeID = routeID; }
+
+
 }

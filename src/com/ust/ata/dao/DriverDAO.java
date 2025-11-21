@@ -101,10 +101,11 @@ public class DriverDAO {
      */
     public int deleteDriver(ArrayList<String> driverIDs) {
         int count = 0;
-        Connection con = DBUtil.getDBConnection("mysql");
+        Connection con = null;
         PreparedStatement ps = null;
 
         try {
+            con = DBUtil.getDBConnection("mysql");
             String sql = "DELETE FROM ATA_TBL_DRIVER WHERE DRIVERID=?";
             ps = con.prepareStatement(sql);
 
@@ -112,6 +113,9 @@ public class DriverDAO {
                 ps.setString(1, id);
                 count += ps.executeUpdate();
             }
+        } catch (java.sql.SQLIntegrityConstraintViolationException e) {
+            // [FIX] Return -1 to indicate Foreign Key violation
+            return -1;
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {

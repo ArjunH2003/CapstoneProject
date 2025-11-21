@@ -10,7 +10,7 @@ public class DBUtil {
     // NOTE: Configure these to match your local database setup
     private static final String URL = "jdbc:mysql://localhost:3306/ata_db";
     private static final String USERNAME = "root";
-    private static final String PASSWORD = "pass@word1"; 
+    private static final String PASSWORD = "password_2012"; 
 
     /**
      * Establishes a connection to the database.
